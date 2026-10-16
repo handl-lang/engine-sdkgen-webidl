@@ -1,8 +1,8 @@
 //! WebIDL backend for the Handl SDK generator (ADR-0113).
 
 use handl_plugin_sdkgen::{
-    Arg, DocSource, EnumConst, Field, Function, Record, SdkgenBackend, SdkgenError, SdkgenModule,
-    Typedef, pick_doc,
+    Arg, DocSource, EnumConst, Field, Function, Record, SdkgenBackend, SdkgenBackendDef,
+    SdkgenError, SdkgenModule, SdkgenRegistry, SdkgenRequest, SdkgenTarget, Typedef, pick_doc,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -14,6 +14,59 @@ mod parser;
 pub use config::WebIdlConfig;
 pub use mdn::MdnDocSource;
 use parser::{AstDef, Member, Type};
+
+/// Register the `webidl` sdkgen target on `reg` (ADR-0128 §0.1): backend
+/// `webidl` plus the target record `(backend: "webidl", emitter:
+/// "hnl-file")` — the emitter resolves by name through the registry, so
+/// this module never crate-depends on it. `webidl` takes no
+/// `--include`/`--exclude` filters (`source_filters: false` keeps the
+/// CLI-level rejection).
+pub fn register(reg: &mut SdkgenRegistry) {
+    reg.register_backend(SdkgenBackendDef {
+        name: "webidl",
+        make: make_backend,
+    });
+    reg.register_target(SdkgenTarget {
+        name: "webidl",
+        backend: "webidl",
+        emitter: "hnl-file",
+        source_filters: false,
+        docs: Some(apply_docs),
+        spec_input: None,
+    });
+}
+
+fn make_backend(req: &SdkgenRequest<'_>) -> Result<Box<dyn SdkgenBackend>, String> {
+    let config = match req.config {
+        Some(path) => WebIdlConfig::load(path)?,
+        None => WebIdlConfig::default(),
+    };
+    let mut backend = WebIdlBackend::new(req.target.map(str::to_string));
+    // `includes:` paths are relative to the config file's dir.
+    if let Some(cfg_dir) = req.config.and_then(Path::parent) {
+        for inc in &config.includes {
+            backend.add_include_spec(cfg_dir.join(inc));
+        }
+    }
+    Ok(Box::new(backend))
+}
+
+fn apply_docs(req: &SdkgenRequest<'_>, module: &mut SdkgenModule) -> Result<(), String> {
+    let config = match req.config {
+        Some(path) => WebIdlConfig::load(path)?,
+        None => WebIdlConfig::default(),
+    };
+    // Persistent MDN cache beside the generated output — repeat regens
+    // skip the network for known keys (misses cached too).
+    let mdn = MdnDocSource::with_disk_cache(
+        req.output
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(".mdn-cache.json"),
+    );
+    WebIdlBackend::apply_docs(module, &config, Some(&mdn));
+    Ok(())
+}
 
 /// WebIDL parser backend.
 pub struct WebIdlBackend {
@@ -51,8 +104,11 @@ impl WebIdlBackend {
     ///
     /// When `external_docs` is not `false` (the default) and no `source`
     /// is supplied, an [`MdnDocSource`] is auto-created and consulted.
+    ///
+    /// An associated function (not a method) so the target's registry
+    /// `docs` hook can run it without a constructed backend — ADR-0128
+    /// §0.1 keeps the config at the call site.
     pub fn apply_docs(
-        &self,
         module: &mut SdkgenModule,
         config: &WebIdlConfig,
         source: Option<&dyn DocSource>,

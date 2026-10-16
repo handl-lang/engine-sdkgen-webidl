@@ -9,7 +9,7 @@ repository.workspace = true
 [dependencies]
 # ADR-0128 Phase 5: platform crates are git deps; the workspace-root
 # `[patch]` resolves them from the sibling `../platform` checkout.
-handl-plugin-sdkgen = { git = "https://github.com/handl-lang/platform", rev = "4366d00791ea6aad152c51fe235d4751ce1c58fc" }
+handl-plugin-sdkgen = { git = "https://github.com/handl-lang/platform", rev = "c52b19a24e359387bfb743612521c9dae8260838" }
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1"
