@@ -6,9 +6,10 @@ description = "WebIDL backend for the Handl SDK generator (ADR-0113)."
 license.workspace = true
 repository.workspace = true
 
-
 [dependencies]
-handl-plugin-sdkgen = { path = "../plugin-sdkgen" }
-serde = { workspace = true, features = ["derive"] }
-serde_yaml = { workspace = true }
-serde_json = { workspace = true }
+# ADR-0128 Phase 5: platform crates are git deps; the workspace-root
+# `[patch]` resolves them from the sibling `../platform` checkout.
+handl-plugin-sdkgen = { git = "https://github.com/handl-lang/platform", rev = "4366d00791ea6aad152c51fe235d4751ce1c58fc" }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1"
