@@ -8,8 +8,8 @@ repository = "https://github.com/handl-lang/sdkgen-webidl"
 
 [dependencies]
 # ADR-0128 Phase 5: platform crates are git deps; the workspace-root
-# `[patch]` resolves them from the sibling `../platform` checkout.
-handl-plugin-sdkgen = { git = "https://github.com/handl-lang/platform", branch = "main" }
+# `[patch]` resolves them from the sibling `../host` checkout.
+handl-plugin-sdkgen = { git = "https://github.com/handl-lang/host", branch = "main" }
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1"
@@ -21,5 +21,5 @@ hnl-engine = { path = "../engine" }
 handl-language = { path = "../kernel/crates/handl-language" }
 handl-value = { path = "../kernel/crates/handl-value" }
 
-[patch."https://github.com/handl-lang/platform"]
-handl-plugin-sdkgen = { path = "../platform/crates/plugin-sdkgen" }
+[patch."https://github.com/handl-lang/host"]
+handl-plugin-sdkgen = { path = "../host/crates/plugin-sdkgen" }
