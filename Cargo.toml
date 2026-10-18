@@ -1,10 +1,10 @@
 [package]
 name = "handl-plugin-sdkgen-backend-webidl"
-version.workspace = true
-edition.workspace = true
+version = "0.1.0"
+edition = "2024"
 description = "WebIDL backend for the Handl SDK generator (ADR-0113)."
-license.workspace = true
-repository.workspace = true
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/handl-lang/sdkgen-webidl"
 
 [dependencies]
 # ADR-0128 Phase 5: platform crates are git deps; the workspace-root
@@ -13,3 +13,13 @@ handl-plugin-sdkgen = { git = "https://github.com/handl-lang/platform", branch =
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1"
+
+[patch."https://github.com/handl-lang/engine"]
+hnl-engine = { path = "../engine" }
+
+[patch."https://github.com/handl-lang/kernel"]
+handl-language = { path = "../kernel/crates/handl-language" }
+handl-value = { path = "../kernel/crates/handl-value" }
+
+[patch."https://github.com/handl-lang/platform"]
+handl-plugin-sdkgen = { path = "../platform/crates/plugin-sdkgen" }
