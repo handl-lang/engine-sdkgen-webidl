@@ -5,11 +5,16 @@
 Sibling-repo deps are git dependencies (`branch = "main"`); `[patch]` tables
 resolve them from sibling checkouts.
 
-`handl-packages/generated/` tracks committed generated SDKs (port dirs
-like `webcrypto/`, adapter dirs like `webcrypto-webidl-browser/`, plus
-the fetched `.idl` inputs and `.sdkgen.yaml` configs) — the recipes are
-reproducible from the `.sdkgen.yaml` + spec pin recorded in each file's
-`--- source:` line.
+`handl-packages/generated/` is the dogfood corpus — sdkgen output for a
+dozen-plus pinned webref specs (port dirs like `webcrypto/`, adapter dirs
+like `webcrypto-webidl-browser/`). It is a **gitignored build artifact**:
+the committed inputs live in `specs/` (`.idl` files pinned to
+w3c/webref@19e2457, two `.sdkgen.yaml` configs, and the MDN doc-cache
+seed) and `scripts/regen-generated.sh` re-emits the whole tree:
+
+```bash
+HNL=../host-cli/target/debug/hnl scripts/regen-generated.sh
+```
 
 ## Docs
 
