@@ -5,6 +5,9 @@ edition = "2024"
 description = "WebIDL backend for the Handl SDK generator (ADR-0113)."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/handl-lang/sdkgen-webidl"
+readme = "README.md"
+keywords = ["handl", "sdkgen", "webidl", "bindings"]
+categories = ["development-tools"]
 
 [dependencies]
 # ADR-0128 Phase 5: platform crates are git deps; the workspace-root
