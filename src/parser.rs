@@ -1,4 +1,9 @@
 //! Lightweight WebIDL grammar for the SDK generator.
+//!
+//! The AST is a superset of what the [`crate`] lowerer consumes —
+//! parsed fields/variants the lowering doesn't read yet are kept for
+//! fidelity, so dead-code analysis is relaxed module-wide.
+#![allow(dead_code)]
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token<'a> {
@@ -117,7 +122,7 @@ impl<'a> Tokenizer<'a> {
                     }
                     self.advance_char();
                 }
-                return Token::String(&self.src[value_start..self.pos]);
+                Token::String(&self.src[value_start..self.pos])
             }
             _ if c.is_ascii_digit() => {
                 if c == '0' && matches!(self.src.as_bytes().get(self.pos + 1), Some(b'x' | b'X')) {
@@ -443,9 +448,8 @@ impl AstDef {
         }
     }
 
-    /// Update `self` in place — counter decrement is a small mutation that the
-    /// match guard already guards; `...` is used to keep the arm short.
-
+    // Update `self` in place — counter decrement is a small mutation that the
+    // match guard already guards; `...` is used to keep the arm short.
     pub fn set_partial(&mut self, partial: bool) {
         match self {
             Self::Interface { partial: p, .. }
@@ -457,10 +461,9 @@ impl AstDef {
         }
     }
 
-    /// Spawn a single member — actually parses the next chunk as one and pushes
-    /// the result onto `self.members`. The helper avoids repeating the bracket
-    /// count twice per loop iteration.
-
+    // Spawn a single member — actually parses the next chunk as one and pushes
+    // the result onto `self.members`. The helper avoids repeating the bracket
+    // count twice per loop iteration.
     pub fn merge(&mut self, mut other: AstDef, diags: &mut Vec<String>) {
         if self.kind() != other.kind() {
             diags.push(format!(
@@ -491,12 +494,11 @@ impl AstDef {
                 ..
             },
         ) = (self, other)
+            && *a == Type::Void
         {
-            if *a == Type::Void {
-                *a = b;
-                if bargs.len() > args.len() {
-                    *args = bargs;
-                }
+            *a = b;
+            if bargs.len() > args.len() {
+                *args = bargs;
             }
         }
     }
@@ -626,11 +628,11 @@ impl<'a> Parser<'a> {
     }
 
     fn consume_if_ident(&mut self, s: &str) -> bool {
-        if let Token::Ident(t) = self.peek() {
-            if *t == s {
-                self.advance();
-                return true;
-            }
+        if let Token::Ident(t) = self.peek()
+            && *t == s
+        {
+            self.advance();
+            return true;
         }
         false
     }
@@ -1038,13 +1040,13 @@ impl<'a> Parser<'a> {
         if self.match_sym('(') {
             let args = self.parse_args_body();
             self.consume_trailing_semi();
-            return Some(Member::Operation {
+            Some(Member::Operation {
                 name,
                 return_ty: ty,
                 args,
                 is_static,
                 doc: None,
-            });
+            })
         } else if ctx == Container::Dictionary {
             if self.match_sym('=') {
                 self.skip_arg_default();
@@ -1064,11 +1066,7 @@ impl<'a> Parser<'a> {
     }
 
     fn peek_is_type(&self) -> bool {
-        match self.peek() {
-            Token::Sym('(') => true,
-            Token::Ident(_) => true,
-            _ => false,
-        }
+        matches!(self.peek(), Token::Sym('(') | Token::Ident(_))
     }
 
     fn parse_members(&mut self, ctx: Container) -> Vec<Member> {
@@ -1234,9 +1232,7 @@ impl<'a> Parser<'a> {
     fn parse_callback(&mut self) -> AstDef {
         let _ = self.consume_if_ident("function");
         let name = self.expect_ident("callback name");
-        let return_ty = if self.match_sym('=') {
-            self.parse_type()
-        } else if !matches!(self.peek(), Token::Sym('(')) {
+        let return_ty = if self.match_sym('=') || !matches!(self.peek(), Token::Sym('(')) {
             self.parse_type()
         } else {
             Type::Void
@@ -1329,11 +1325,9 @@ impl<'a> Parser<'a> {
                     d.set_doc(doc);
                 }
                 defs.push(d);
-                if !self.match_sym(';') {
-                    if !matches!(self.peek(), Token::Eof) {
-                        self.diag("expected ';' after definition");
-                        self.skip_to_semi();
-                    }
+                if !self.match_sym(';') && !matches!(self.peek(), Token::Eof) {
+                    self.diag("expected ';' after definition");
+                    self.skip_to_semi();
                 }
             }
             if self.pos == start {

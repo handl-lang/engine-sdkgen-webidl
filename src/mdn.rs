@@ -1,6 +1,6 @@
 //! MDN web-docs doc source for the WebIDL backend.
 
-use handl_plugin_sdkgen::{DocSource, http_get};
+use handl_plugin_codegen::{DocSource, http_get};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -80,10 +80,10 @@ fn mdn_paths(key: &str) -> Vec<String> {
 
 impl Drop for MdnDocSource {
     fn drop(&mut self) {
-        if let Some(path) = &self.cache_path {
-            if let Ok(json) = serde_json::to_string(&*self.cache.borrow()) {
-                let _ = std::fs::write(path, json);
-            }
+        if let Some(path) = &self.cache_path
+            && let Ok(json) = serde_json::to_string(&*self.cache.borrow())
+        {
+            let _ = std::fs::write(path, json);
         }
     }
 }

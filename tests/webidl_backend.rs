@@ -1,5 +1,4 @@
-use handl_plugin_sdkgen::SdkgenBackend;
-use handl_plugin_sdkgen_backend_webidl::WebIdlBackend;
+use handl_plugin_codegen_backend_webidl::WebIdlBackend;
 use std::path::Path;
 
 #[test]
@@ -305,7 +304,10 @@ fn worker_members_carry_js_dispatch_markers() {
     // `Worker` global.
     let register = find("worker_register");
     assert!(
-        !register.arg_descriptors.iter().any(|d| d.starts_with("recv:")),
+        !register
+            .arg_descriptors
+            .iter()
+            .any(|d| d.starts_with("recv:")),
         "static op must not carry a receiver: {:?}",
         register.arg_descriptors
     );
@@ -325,11 +327,7 @@ fn worker_members_carry_js_dispatch_markers() {
         assert_eq!(f.port_args[0].name, "self");
         assert_eq!(f.port_args[1].name, "handler");
         assert_eq!(f.arg_descriptors[0], "recv:js_object");
-        assert_eq!(
-            f.arg_descriptors[1],
-            format!("handler:{event}"),
-            "{fname}"
-        );
+        assert_eq!(f.arg_descriptors[1], format!("handler:{event}"), "{fname}");
         assert_eq!(f.return_port, "Handle");
         assert_eq!(f.ret_descriptor, "js_object");
     }
@@ -393,7 +391,7 @@ fn enum_constants_are_deterministic() {
     let path = manifest.join("tests/fixtures/enums.webidl");
     let backend = WebIdlBackend::new(None);
 
-    let names = |m: &handl_plugin_sdkgen::SdkgenModule| {
+    let names = |m: &handl_plugin_codegen::SdkgenModule| {
         m.enum_constants
             .iter()
             .map(|c| c.name.clone())

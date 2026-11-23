@@ -1,18 +1,20 @@
 [package]
-name = "handl-plugin-sdkgen-backend-webidl"
+name = "handl-plugin-codegen-backend-webidl"
 version = "0.1.0"
 edition = "2024"
-description = "WebIDL backend for the Handl SDK generator (ADR-0113)."
+description = "WebIDL backend for the Handl codegen pipeline (ADR-0113, PL-004)."
 license = "MIT"
-repository = "https://github.com/handl-lang/engine-sdkgen-webidl"
+repository = "https://github.com/handl-lang/engine-codegen-webidl"
 readme = "README.md"
-keywords = ["handl", "sdkgen", "webidl", "bindings"]
+keywords = ["handl", "codegen", "webidl", "bindings"]
 categories = ["development-tools"]
 
 [dependencies]
-# ADR-0128 Phase 5: platform crates are git deps; the workspace-root
-# `[patch]` resolves them from the sibling `../host` checkout.
-handl-plugin-sdkgen = { git = "https://github.com/handl-lang/host", branch = "main" }
+# PL-004 T-075: the codegen port lives in `handl-plugin-codegen`
+# (host@7707dbb1+, local-only until pushed); the `[patch]` below
+# resolves it from the sibling `../host` checkout. Kernel traits
+# (`Source`/`Emitter`/`Change`) are re-exported by that crate.
+handl-plugin-codegen = { git = "https://github.com/handl-lang/host", branch = "main" }
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1"
@@ -20,10 +22,10 @@ serde_json = "1"
 [patch."https://github.com/handl-lang/engine"]
 hnl-engine = { path = "../engine" }
 
+[patch."https://github.com/handl-lang/host"]
+handl-plugin-codegen = { path = "../host/crates/plugin-codegen" }
+
 [patch."https://github.com/handl-lang/kernel"]
 handl-calculus = { path = "../kernel/crates/handl-calculus" }
 handl-language = { path = "../kernel/crates/handl-language" }
 handl-value = { path = "../kernel/crates/handl-value" }
-
-[patch."https://github.com/handl-lang/host"]
-handl-plugin-sdkgen = { path = "../host/crates/plugin-sdkgen" }

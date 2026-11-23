@@ -1,7 +1,7 @@
-# engine-sdkgen-webidl
+# engine-codegen-webidl
 
-`handl-plugin-sdkgen-backend-webidl` — WebIDL backend for the Handl SDK
-generator. Part of the `engine-sdkgen-*` family: parses WebIDL specs and emits
+`handl-plugin-codegen-backend-webidl` — WebIDL backend for the Handl SDK
+generator. Part of the `engine-codegen-*` family: parses WebIDL specs and emits
 SDK bindings.
 
 `handl-packages/generated/` is the dogfood corpus — sdkgen output for a

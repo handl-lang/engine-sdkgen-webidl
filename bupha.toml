@@ -1,4 +1,4 @@
-# bupha.toml — committed CI manifest for handl-lang/engine-sdkgen-webidl.
+# bupha.toml — committed CI manifest for handl-lang/engine-codegen-webidl.
 #
 # Runner is this repo's ci.sh (cargo check --workspace --all-targets +
 # cargo test --workspace --no-fail-fast). Merge the [[repos]] entry into
@@ -6,8 +6,8 @@
 # bupha watch --config bupha.toml
 
 [[repos]]
-name = "handl-lang/engine-sdkgen-webidl"
-dir = "~/GitHub/handl-lang/engine-sdkgen-webidl"
+name = "handl-lang/engine-codegen-webidl"
+dir = "~/GitHub/handl-lang/engine-codegen-webidl"
 branch = "refs/heads/main"
   [repos.runner]
   kind = "script"

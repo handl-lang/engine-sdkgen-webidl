@@ -1,8 +1,9 @@
-//! WebIDL backend for the Handl SDK generator (ADR-0113).
+//! WebIDL backend for the Handl codegen pipeline (ADR-0113, PL-004).
 
-use handl_plugin_sdkgen::{
-    Arg, DocSource, EnumConst, Field, Function, Record, SdkgenBackend, SdkgenBackendDef,
-    SdkgenError, SdkgenModule, SdkgenRegistry, SdkgenRequest, SdkgenTarget, Typedef, pick_doc,
+use handl_plugin_codegen::{
+    AnySource, Arg, CodegenError, CodegenRegistry, CodegenRequest, CodegenSourceDef, CodegenTarget,
+    DocSource, EmitContext, EnumConst, Field, Function, Record, SdkgenModule, Source, Typedef,
+    erase_source, pick_doc,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -15,20 +16,20 @@ pub use config::WebIdlConfig;
 pub use mdn::MdnDocSource;
 use parser::{AstDef, Member, Type};
 
-/// Register the `webidl` sdkgen target on `reg` (ADR-0128 §0.1): backend
-/// `webidl` plus the target record `(backend: "webidl", emitter:
+/// Register the `webidl` codegen target on `reg` (ADR-0128 §0.1, PL-004):
+/// source `webidl` plus the target record `(source: "webidl", emitter:
 /// "hnl-file")` — the emitter resolves by name through the registry, so
 /// this module never crate-depends on it. `webidl` takes no
 /// `--include`/`--exclude` filters (`source_filters: false` keeps the
 /// CLI-level rejection).
-pub fn register(reg: &mut SdkgenRegistry) {
-    reg.register_backend(SdkgenBackendDef {
+pub fn register(reg: &mut CodegenRegistry) {
+    reg.register_source(CodegenSourceDef {
         name: "webidl",
-        make: make_backend,
+        make: make_source,
     });
-    reg.register_target(SdkgenTarget {
+    reg.register_target(CodegenTarget {
         name: "webidl",
-        backend: "webidl",
+        source: "webidl",
         emitter: "hnl-file",
         source_filters: false,
         docs: Some(apply_docs),
@@ -36,7 +37,7 @@ pub fn register(reg: &mut SdkgenRegistry) {
     });
 }
 
-fn make_backend(req: &SdkgenRequest<'_>) -> Result<Box<dyn SdkgenBackend>, String> {
+fn make_source(req: &CodegenRequest<'_>) -> Result<Box<dyn AnySource>, String> {
     let config = match req.config {
         Some(path) => WebIdlConfig::load(path)?,
         None => WebIdlConfig::default(),
@@ -48,22 +49,29 @@ fn make_backend(req: &SdkgenRequest<'_>) -> Result<Box<dyn SdkgenBackend>, Strin
             backend.add_include_spec(cfg_dir.join(inc));
         }
     }
-    Ok(Box::new(backend))
+    Ok(erase_source(backend))
 }
 
-fn apply_docs(req: &SdkgenRequest<'_>, module: &mut SdkgenModule) -> Result<(), String> {
+fn apply_docs(req: &CodegenRequest<'_>, module: &mut SdkgenModule) -> Result<(), String> {
     let config = match req.config {
         Some(path) => WebIdlConfig::load(path)?,
         None => WebIdlConfig::default(),
     };
-    // Persistent MDN cache beside the generated output — repeat regens
-    // skip the network for known keys (misses cached too).
-    let mdn = MdnDocSource::with_disk_cache(
-        req.output
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(".mdn-cache.json"),
-    );
+    // Persistent MDN cache under the request's `cache_dir` (PL-004
+    // side-effect policy — deliberately outside the output tree);
+    // falls back to the legacy `output.parent()/.mdn-cache.json` when
+    // the request provides none. Repeat regens skip the network for
+    // known keys (misses cached too).
+    let cache_path = req
+        .cache_dir
+        .map(|d| d.join(".mdn-cache.json"))
+        .unwrap_or_else(|| {
+            req.output
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join(".mdn-cache.json")
+        });
+    let mdn = MdnDocSource::with_disk_cache(cache_path);
     WebIdlBackend::apply_docs(module, &config, Some(&mdn));
     Ok(())
 }
@@ -155,10 +163,17 @@ impl WebIdlBackend {
     }
 }
 
-impl SdkgenBackend for WebIdlBackend {
-    fn parse_header(&self, path: &Path) -> Result<SdkgenModule, SdkgenError> {
+impl Source<SdkgenModule> for WebIdlBackend {
+    /// Lift a `.webidl` spec into [`SdkgenModule`]. Pure: reads the spec
+    /// (and `includes:` specs) from disk, writes nothing. The spec path
+    /// comes from `EmitContext::spec_path`; `source_url` is stamped as
+    /// provenance (`--- source:` headers downstream).
+    fn parse(&self, req: &EmitContext) -> Result<SdkgenModule, CodegenError> {
+        let path = req.spec_path.as_deref().ok_or_else(|| {
+            CodegenError::Parse("webidl source requires EmitContext::spec_path".into())
+        })?;
         let src = std::fs::read_to_string(path)
-            .map_err(|e| SdkgenError(format!("failed to read {}: {e}", path.display())))?;
+            .map_err(|e| CodegenError::Parse(format!("failed to read {}: {e}", path.display())))?;
         let (defs, mut diags) = parser::parse_webidl(&src);
 
         let mut module = SdkgenModule::default();
@@ -281,19 +296,16 @@ impl SdkgenBackend for WebIdlBackend {
             };
             // Foreign target: pull the interface from an include spec into
             // `by_key` so the augmented record emits in this package.
-            if !by_key.contains_key(&(target.clone(), "interface")) {
-                if let Some(inc_members) = include_interfaces.get(&target) {
-                    by_key.insert(
-                        (target.clone(), "interface"),
-                        AstDef::Interface {
-                            name: target.clone(),
-                            base: None,
-                            members: inc_members.clone(),
-                            partial: false,
-                            doc: None,
-                        },
-                    );
-                }
+            if let Some(inc_members) = include_interfaces.get(&target) {
+                by_key
+                    .entry((target.clone(), "interface"))
+                    .or_insert_with(|| AstDef::Interface {
+                        name: target.clone(),
+                        base: None,
+                        members: inc_members.clone(),
+                        partial: false,
+                        doc: None,
+                    });
             }
             let Some(target_members) = by_key
                 .get_mut(&(target.clone(), "interface"))
@@ -362,9 +374,7 @@ impl SdkgenBackend for WebIdlBackend {
                         if let Some(f) = member_to_function(&name, m, instance_ctx) {
                             functions.insert((name.clone(), f.name.clone()), f);
                         }
-                        if instance_ctx
-                            && let Some(f) = attribute_to_function(&name, m)
-                        {
+                        if instance_ctx && let Some(f) = attribute_to_function(&name, m) {
                             functions.insert((name.clone(), f.name.clone()), f);
                         }
                     }
@@ -418,7 +428,16 @@ impl SdkgenBackend for WebIdlBackend {
         enum_constants.sort_by(|a, b| a.name.cmp(&b.name));
         module.enum_constants = enum_constants;
         module.diagnostics = diags;
+        module.source = req.source_url.clone();
         Ok(module)
+    }
+}
+
+impl WebIdlBackend {
+    /// Convenience wrapper for direct/test use — the pipeline entry
+    /// point is [`Source::parse`] over an [`EmitContext`].
+    pub fn parse_header(&self, path: &Path) -> Result<SdkgenModule, CodegenError> {
+        self.parse(&EmitContext::new().with_spec_path(path))
     }
 }
 
@@ -500,9 +519,7 @@ fn member_to_function(intf: &str, m: &Member, instance_ctx: bool) -> Option<Func
             doc,
             ..
         } => (name.clone(), return_ty, args, doc.clone()),
-        Member::Constructor { args, doc } => {
-            ("constructor".into(), &ctor_ret, args, doc.clone())
-        }
+        Member::Constructor { args, doc } => ("constructor".into(), &ctor_ret, args, doc.clone()),
         _ => return None,
     };
     // Same guard as `member_to_field`: an operation whose name failed
@@ -514,15 +531,19 @@ fn member_to_function(intf: &str, m: &Member, instance_ctx: bool) -> Option<Func
     let full_name = format!("{}_{}", to_snake(intf), snake);
     let port_name = format!("{}{}", to_pascal(intf), to_pascal(&to_snake(&op_name)));
     let c_decl = format!("{}.{}", intf, op_name);
-    let mut f = build_function(
-        &full_name, port_name, return_ty, args, c_decl, doc,
-    );
+    let mut f = build_function(&full_name, port_name, return_ty, args, c_decl, doc);
     // Instance (non-static) operations dispatch on a receiver — mark the
     // leading `self` arg so the emitter peels it into `js.invoke`'s
     // receiver slot instead of marshalling it as a call argument.
     if instance_ctx
         && !matches!(m, Member::Constructor { .. })
-        && !matches!(m, Member::Operation { is_static: true, .. })
+        && !matches!(
+            m,
+            Member::Operation {
+                is_static: true,
+                ..
+            }
+        )
     {
         let recv = receiver_name(&f.port_args);
         f.port_args.insert(

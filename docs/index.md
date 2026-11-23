@@ -1,6 +1,6 @@
 # The `webidl` backend — WebIDL specs for the `js` client
 
-`handl-plugin-sdkgen-backend-webidl` parses a WebIDL spec (e.g. a
+`handl-plugin-codegen-backend-webidl` parses a WebIDL spec (e.g. a
 webref `*.idl`) into `SdkgenModule` IR for the `js` client; the
 `hnl-file` emitter (`sdkgen-file`) renders port + adapter. Framework
 context: [`host/docs/sdkgen/`](https://github.com/handl-lang/host/blob/main/docs/sdkgen/index.md).
@@ -103,7 +103,7 @@ The `hnl-file` emitter remaps descriptors to `js_*` spellings for the
 `construct` (`Interface.constructor`), `on` (`handler:<event>`
 listener registration — its result convention is `null` + recorded
 `error()` = failure, since `on` does not clear `error()` on
-success). See `engine-sdkgen-file/docs/index.md` for the emitted
+success). See `engine-codegen-file/docs/index.md` for the emitted
 shapes.
 
 ## Config — `WebIdlConfig`
