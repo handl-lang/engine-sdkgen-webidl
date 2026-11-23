@@ -348,6 +348,42 @@ fn worker_members_carry_js_dispatch_markers() {
     );
 }
 
+/// `?` follows the whole type production in WebIDL, so nullable
+/// generics/arrays (`FrozenArray<T>?`, `sequence<T>?`, `T[]?`) must not
+/// strand the `?` — an unconsumed `?` used to leave the attribute name
+/// empty and emit a nameless `: Handle` record field (html.idl's
+/// `NotRestoredReasons`). Every field must carry its declared name.
+#[test]
+fn parses_nullable_generic_attribute_types() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest.join("tests/fixtures/nullable-generic.webidl");
+    let backend = WebIdlBackend::new(None);
+    let module = backend.parse_header(&path).expect("parse fixture");
+
+    assert!(module.diagnostics.is_empty(), "{:?}", module.diagnostics);
+
+    let reasons = module
+        .records
+        .iter()
+        .find(|r| r.name == "NotRestoredReasons")
+        .expect("NotRestoredReasons record");
+    assert_eq!(
+        reasons.fields.iter().map(|f| &f.name).collect::<Vec<_>>(),
+        vec!["src", "id", "reasons", "children", "tags", "aliases"]
+    );
+    assert!(
+        reasons.fields.iter().all(|f| !f.name.is_empty()),
+        "nameless field emitted: {:?}",
+        reasons.fields
+    );
+    // Foreign/generic types collapse to `Handle`/`js_object` per
+    // `map_type` — the nullable wrapper doesn't change that.
+    for f in &reasons.fields[2..] {
+        assert_eq!(f.port, "Handle", "{}", f.name);
+        assert_eq!(f.descriptor, "js_object", "{}", f.name);
+    }
+}
+
 /// Enum constants are gathered through a `HashMap` merge; without a sort the
 /// emitted order varies per run (fresh `RandomState`). Parsing twice in one
 /// process must yield identical output.

@@ -435,6 +435,18 @@ fn member_name(m: &Member) -> Option<&str> {
 }
 
 fn member_to_field(m: &Member) -> Option<Field> {
+    // A member whose name failed to parse (`expect_ident` yields "")
+    // must never reach the emitter — a nameless field serializes as
+    // `: <type>` and fails `hnl typecheck`. The parser already logged a
+    // diagnostic; skip the member like any other unparsable one.
+    match m {
+        Member::Attribute { name, .. } | Member::DictionaryField { name, .. }
+            if name.is_empty() =>
+        {
+            return None;
+        }
+        _ => {}
+    }
     match m {
         Member::Attribute {
             name,
@@ -493,6 +505,11 @@ fn member_to_function(intf: &str, m: &Member, instance_ctx: bool) -> Option<Func
         }
         _ => return None,
     };
+    // Same guard as `member_to_field`: an operation whose name failed
+    // to parse would emit `_`-suffixed garbage ports.
+    if op_name.is_empty() {
+        return None;
+    }
     let snake = to_snake(&op_name);
     let full_name = format!("{}_{}", to_snake(intf), snake);
     let port_name = format!("{}{}", to_pascal(intf), to_pascal(&to_snake(&op_name)));

@@ -781,33 +781,38 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Type suffixes (`?`, `<...>`, `[]`) repeat in a loop: WebIDL's
+    /// nullable marker follows the *whole* type production, so
+    /// `FrozenArray<T>?` / `sequence<T>?` / `T[]?` put `?` after the
+    /// generic/array suffix — not before it.
     fn parse_type_suffix(&mut self, mut t: Type) -> Type {
-        if self.match_sym('?') {
-            t = Type::Nullable(Box::new(t));
-        }
-        if self.match_sym('<') {
-            match t {
-                Type::Record(_, _) => {
-                    let k = self.parse_type();
-                    self.expect_sym(',');
-                    let v = self.parse_type();
-                    t = Type::Record(Box::new(k), Box::new(v));
+        loop {
+            if self.match_sym('?') {
+                t = Type::Nullable(Box::new(t));
+            } else if self.match_sym('<') {
+                match t {
+                    Type::Record(_, _) => {
+                        let k = self.parse_type();
+                        self.expect_sym(',');
+                        let v = self.parse_type();
+                        t = Type::Record(Box::new(k), Box::new(v));
+                    }
+                    _ => {
+                        let inner = self.parse_type();
+                        t = match t {
+                            Type::Promise(_) => Type::Promise(Box::new(inner)),
+                            _ => Type::Sequence(Box::new(inner)),
+                        };
+                    }
                 }
-                _ => {
-                    let inner = self.parse_type();
-                    t = match t {
-                        Type::Promise(_) => Type::Promise(Box::new(inner)),
-                        _ => Type::Sequence(Box::new(inner)),
-                    };
-                }
+                self.expect_sym('>');
+            } else if self.match_sym('[') {
+                self.expect_sym(']');
+                t = Type::Sequence(Box::new(t));
+            } else {
+                return t;
             }
-            self.expect_sym('>');
         }
-        if self.match_sym('[') {
-            self.expect_sym(']');
-            t = Type::Sequence(Box::new(t));
-        }
-        t
     }
 
     pub fn parse_type(&mut self) -> Type {
