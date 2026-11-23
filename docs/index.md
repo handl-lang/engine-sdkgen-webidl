@@ -2,13 +2,13 @@
 
 `handl-plugin-codegen-backend-webidl` parses a WebIDL spec (e.g. a
 webref `*.idl`) into `SdkgenModule` IR for the `js` client; the
-`hnl-file` emitter (`sdkgen-file`) renders port + adapter. Framework
-context: [`host/docs/sdkgen/`](https://github.com/handl-lang/host/blob/main/docs/sdkgen/index.md).
+`hnl-file` emitter (`hnl-file`) renders port + adapter. Framework
+context: [`host/docs/codegen/`](https://github.com/handl-lang/host/blob/main/docs/codegen/index.md).
 
 ```bash
-hnl sdkgen webidl fetch.idl --output handl-packages/generated/fetch
-hnl sdkgen webidl --from-url https://…/fetch.idl --output …/generated/fetch
-hnl sdkgen webidl fetch.idl --output … --config fetch.sdkgen.yaml
+hnl codegen webidl fetch.idl --output handl-packages/generated/fetch
+hnl codegen webidl --from-url https://…/fetch.idl --output …/generated/fetch
+hnl codegen webidl fetch.idl --output … --config fetch.sdkgen.yaml
 ```
 
 `--target` is a free-form slug (default `browser`) that names the

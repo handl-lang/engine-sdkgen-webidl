@@ -25,7 +25,7 @@ impl MdnDocSource {
 
     /// Like [`MdnDocSource::new`] but persists the lookup cache as a JSON
     /// map at `path` — loaded on construction, written back on drop.
-    /// Repeat sdkgen runs then skip the network entirely for known keys
+    /// Repeat codegen runs then skip the network entirely for known keys
     /// (misses are cached too, so 404s don't refetch).
     pub fn with_disk_cache(path: PathBuf) -> Self {
         let cache = std::fs::read_to_string(&path)

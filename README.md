@@ -4,7 +4,7 @@
 generator. Part of the `tool-codegen-*` family: parses WebIDL specs and emits
 SDK bindings.
 
-`handl-packages/generated/` is the dogfood corpus — sdkgen output for a
+`handl-packages/generated/` is the dogfood corpus — codegen output for a
 dozen-plus pinned webref specs (port dirs like `webcrypto/`, adapter dirs
 like `webcrypto-webidl-browser/`). It is a **gitignored build artifact**:
 the committed inputs live in `specs/` (`.idl` files pinned to
@@ -30,7 +30,7 @@ test-runs as-is.
 - [docs/index.md](docs/index.md) — the `webidl` backend: grammar
   subset, mixin/`includes` resolution, type map, `WebIdlConfig`, MDN
   doc layering.
-- Framework: [`host/docs/sdkgen/`](https://github.com/handl-lang/host/blob/main/docs/sdkgen/index.md).
+- Framework: [`host/docs/codegen/`](https://github.com/handl-lang/host/blob/main/docs/codegen/index.md).
 
 ## License
 

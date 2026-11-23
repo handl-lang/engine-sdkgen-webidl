@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Regenerate the dogfood WebIDL corpus under handl-packages/generated/ —
-# gitignored build artifacts produced by `hnl sdkgen webidl` from the
+# gitignored build artifacts produced by `hnl codegen webidl` from the
 # committed specs in specs/ (w3c/webref @
 # 19e2457df856a43ec749c0fd4e88ae1edc4f6cb8, ed/idl/*.idl — pinned so regen
 # is deterministic and offline-capable; `--source-url` stamps the upstream
@@ -34,14 +34,14 @@ if [ -f "$SPEC_DIR/mdn-cache.json" ]; then
   cp "$SPEC_DIR/mdn-cache.json" "$GEN_DIR/.mdn-cache.json"
 fi
 
-gen() { # <spec-file> <pkg> [sdkgen-config]
+gen() { # <spec-file> <pkg> [codegen-config]
   local spec="$1" pkg="$2" cfg="${3:-}" url
   url="https://raw.githubusercontent.com/w3c/webref/$PIN/ed/idl/$(basename "$spec")"
-  echo "== hnl sdkgen webidl $spec --output $GEN_DIR/$pkg =="
+  echo "== hnl codegen webidl $spec --output $GEN_DIR/$pkg =="
   if [ -n "$cfg" ]; then
-    "$HNL" sdkgen webidl "$spec" --output "$GEN_DIR/$pkg" --config "$cfg" --source-url "$url"
+    "$HNL" codegen webidl "$spec" --output "$GEN_DIR/$pkg" --config "$cfg" --source-url "$url"
   else
-    "$HNL" sdkgen webidl "$spec" --output "$GEN_DIR/$pkg" --source-url "$url"
+    "$HNL" codegen webidl "$spec" --output "$GEN_DIR/$pkg" --source-url "$url"
   fi
 }
 
