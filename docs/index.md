@@ -29,8 +29,9 @@ adapter package (`<pkg>-webidl-<slug>`); `--include`/`--exclude` are
   fields (`required` flagged, `= default` skipped), operations
   (`optional`/variadic args, `=` defaults — `optional` is parsed but
   emitted as an ordinary port arg; `T...` sets `variadic`),
-  `constructor(…)`. `static`
-  and `getter`/`setter`/`deleter`/`legacycaller`/`stringifier`
+  `constructor(…)`. `static` marks the operation (`Operation.
+  is_static`) so the backend can keep it receiver-less;
+  `getter`/`setter`/`deleter`/`legacycaller`/`stringifier`
   qualifiers parse but don't mark the output; `iterable<K,V>`/
   `maplike`/`setlike`/`async_iterable` members are container semantics —
   nothing to emit.
@@ -49,6 +50,22 @@ adapter package (`<pkg>-webidl-<slug>`); `--include`/`--exclude` are
   members become fields; `readonly` → `is_const`) **plus** one
   `Function` per operation/constructor (`<intf>_<op>` snake name,
   `<Intf><Op>` port name, `c_decl = "Interface.member"`).
+- **JS dispatch markers** on interface/mixin functions (dictionaries
+  carry data members only):
+  - non-static operations get a leading `self: Handle` port arg whose
+    descriptor is `recv:js_object` — the emitter peels it into
+    `invoke(self, "member", …)`.
+  - `static` operations and `namespace` members stay receiver-less —
+    `call("Interface"/"namespace", "member", …)`.
+  - `constructor(…)` returns `Handle`/`js_object` (the constructed
+    instance) and maps to `construct("", "Interface", …)`.
+  - `attribute EventHandler on<event>` (any `*EventHandler`/
+    `*EventHandlerNonNull` typedef, nullable or not) becomes an
+    `(self, handler)` function — `recv:js_object` +
+    `handler:<event>` descriptors — which the emitter turns into
+    `on(self, "<event>", handler)`. The attribute also remains a
+    record field; ordinary data attributes have no accessor yet (no
+    `get`/`set` op exists).
 - `namespace` → functions only (no record).
 - `callback` → a `Function` with `c_decl = "callback Name(args…)"` (no
   doc-source lookup — MDN has no page for callbacks).
@@ -81,8 +98,13 @@ adapter package (`<pkg>-webidl-<slug>`); `--include`/`--exclude` are
 The `hnl-file` emitter remaps descriptors to `js_*` spellings for the
 `js` client (`i32` → `js_number`, `void` → `js_void`, `bool` →
 `js_boolean`, `promise*` → `js_promise`); `js_string`/`js_bytes`/
-`js_object` pass through. Adapters call `call(library, "member",
-[args], [descs], ret, false)` and check `error()`.
+`js_object` pass through. Adapters dispatch per function: `call`
+(namespace/static/global ops), `invoke` (`recv:` receiver),
+`construct` (`Interface.constructor`), `on` (`handler:<event>`
+listener registration — its result convention is `null` + recorded
+`error()` = failure, since `on` does not clear `error()` on
+success). See `engine-sdkgen-file/docs/index.md` for the emitted
+shapes.
 
 ## Config — `WebIdlConfig`
 

@@ -320,17 +320,30 @@ impl SdkgenBackend for WebIdlBackend {
 
         for def in by_key.into_values() {
             match def {
-                AstDef::Interface {
-                    name, members, doc, ..
-                }
-                | AstDef::Mixin {
-                    name, members, doc, ..
-                }
-                | AstDef::Dictionary {
-                    name, members, doc, ..
-                } => {
+                container @ (AstDef::Interface { .. }
+                | AstDef::Mixin { .. }
+                | AstDef::Dictionary { .. }) => {
+                    // Instance containers (interfaces and mixins) get
+                    // receiver-aware operations and `on*` event-handler
+                    // registrations; dictionaries carry data members only.
+                    let instance_ctx =
+                        matches!(container, AstDef::Interface { .. } | AstDef::Mixin { .. });
+                    let (name, members, doc) = match &container {
+                        AstDef::Interface {
+                            name, members, doc, ..
+                        }
+                        | AstDef::Mixin {
+                            name, members, doc, ..
+                        }
+                        | AstDef::Dictionary {
+                            name, members, doc, ..
+                        } => (name, members, doc),
+                        _ => unreachable!(),
+                    };
+                    let name = name.clone();
+                    let doc = doc.clone();
                     let mut fields = Vec::new();
-                    for m in &members {
+                    for m in members {
                         if let Some(field) = member_to_field(m) {
                             fields.push(field);
                         }
@@ -345,15 +358,20 @@ impl SdkgenBackend for WebIdlBackend {
                             doc,
                         },
                     );
-                    for m in &members {
-                        if let Some(f) = member_to_function(&name, m) {
+                    for m in members {
+                        if let Some(f) = member_to_function(&name, m, instance_ctx) {
+                            functions.insert((name.clone(), f.name.clone()), f);
+                        }
+                        if instance_ctx
+                            && let Some(f) = attribute_to_function(&name, m)
+                        {
                             functions.insert((name.clone(), f.name.clone()), f);
                         }
                     }
                 }
                 AstDef::Namespace { name, members, .. } => {
                     for m in &members {
-                        if let Some(f) = member_to_function(&name, m) {
+                        if let Some(f) = member_to_function(&name, m, false) {
                             functions.insert((name.clone(), f.name.clone()), f);
                         }
                     }
@@ -453,24 +471,127 @@ fn member_to_field(m: &Member) -> Option<Field> {
     }
 }
 
-fn member_to_function(intf: &str, m: &Member) -> Option<Function> {
+/// `instance_ctx` marks interface/mixin members: non-static operations
+/// gain a leading `self` receiver arg whose descriptor carries the
+/// `recv:` marker the `hnl-file` emitter turns into `js.invoke`; static
+/// operations and namespace members stay receiver-less (`js.call` on
+/// the interface/namespace object). Constructors return the constructed
+/// interface (`Handle`/`js_object`) so adapters can chain off the new
+/// instance — the emitter maps `Interface.constructor` to `js.construct`.
+fn member_to_function(intf: &str, m: &Member, instance_ctx: bool) -> Option<Function> {
+    let ctor_ret = Type::Handle(intf.to_string());
     let (op_name, return_ty, args, doc) = match m {
         Member::Operation {
             name,
             return_ty,
             args,
             doc,
+            ..
         } => (name.clone(), return_ty, args, doc.clone()),
-        Member::Constructor { args, doc } => ("constructor".into(), &Type::Void, args, doc.clone()),
+        Member::Constructor { args, doc } => {
+            ("constructor".into(), &ctor_ret, args, doc.clone())
+        }
         _ => return None,
     };
     let snake = to_snake(&op_name);
     let full_name = format!("{}_{}", to_snake(intf), snake);
     let port_name = format!("{}{}", to_pascal(intf), to_pascal(&to_snake(&op_name)));
     let c_decl = format!("{}.{}", intf, op_name);
-    Some(build_function(
+    let mut f = build_function(
         &full_name, port_name, return_ty, args, c_decl, doc,
-    ))
+    );
+    // Instance (non-static) operations dispatch on a receiver — mark the
+    // leading `self` arg so the emitter peels it into `js.invoke`'s
+    // receiver slot instead of marshalling it as a call argument.
+    if instance_ctx
+        && !matches!(m, Member::Constructor { .. })
+        && !matches!(m, Member::Operation { is_static: true, .. })
+    {
+        let recv = receiver_name(&f.port_args);
+        f.port_args.insert(
+            0,
+            Arg {
+                name: recv,
+                port: "Handle".into(),
+            },
+        );
+        f.arg_descriptors.insert(0, "recv:js_object".into());
+    }
+    Some(f)
+}
+
+/// Pick a receiver arg name that doesn't collide with the operation's
+/// own parameters (`self`, then `self_`, `self__`, …).
+fn receiver_name(args: &[Arg]) -> String {
+    let mut name = "self".to_string();
+    while args.iter().any(|a| a.name == name) {
+        name.push('_');
+    }
+    name
+}
+
+/// Whether `ty` spells an event-handler callback type — the WebIDL
+/// `attribute EventHandler on<event>` pattern. The attribute's type is
+/// written as the (typedef'd) callback name, so the check is on the
+/// spelled base name: `EventHandler`, any `*EventHandler` typedef
+/// (`OnErrorEventHandler`, `OnBeforeUnloadEventHandler`, …), or the
+/// `*EventHandlerNonNull` callback names typedefs resolve through.
+fn is_event_handler_type(ty: &Type) -> bool {
+    let base = match ty {
+        Type::Nullable(inner) => inner.as_ref(),
+        t => t,
+    };
+    match base {
+        Type::Handle(name) => {
+            name == "EventHandler"
+                || name.ends_with("EventHandler")
+                || name.ends_with("EventHandlerNonNull")
+        }
+        _ => false,
+    }
+}
+
+/// `on<event>` event-handler attributes (`attribute EventHandler
+/// onmessage`) become listener-registration functions: `(self, handler)`
+/// where `self` carries the `recv:` marker and `handler`'s descriptor
+/// carries `handler:<event>` — the `hnl-file` emitter turns the pair
+/// into a `js.on(self, "<event>", handler)` call. Data attributes stay
+/// record fields only (there is no `js.get`/`js.set` op to accessor
+/// them through yet).
+fn attribute_to_function(intf: &str, m: &Member) -> Option<Function> {
+    let Member::Attribute { name, ty, doc, .. } = m else {
+        return None;
+    };
+    if !name.starts_with("on") || name.len() <= 2 || !is_event_handler_type(ty) {
+        return None;
+    }
+    let event = name[2..].to_string();
+    let snake = to_snake(name);
+    let full_name = format!("{}_{}", to_snake(intf), snake);
+    let port_name = format!("{}{}", to_pascal(intf), to_pascal(&snake));
+    let c_decl = format!("{}.{}", intf, name);
+    Some(Function {
+        name: full_name,
+        port_name,
+        port_args: vec![
+            Arg {
+                name: "self".into(),
+                port: "Handle".into(),
+            },
+            Arg {
+                name: "handler".into(),
+                port: "Handle".into(),
+            },
+        ],
+        arg_descriptors: vec!["recv:js_object".into(), format!("handler:{event}")],
+        return_port: "Handle".into(),
+        ret_descriptor: "js_object".into(),
+        out_struct: None,
+        variadic: false,
+        errno_guard: true,
+        c_decl,
+        doc: doc.clone(),
+    })
 }
 
 fn callback_to_function(

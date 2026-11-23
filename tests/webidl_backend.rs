@@ -253,6 +253,101 @@ fn includes_graft_onto_foreign_interface() {
     );
 }
 
+/// Worker-class bindings: `constructor` returns the instance
+/// (`Handle`/`js_object`), instance ops gain a `recv:`-marked `self`
+/// arg, `static` ops and namespace members stay receiver-less, and
+/// `on<event>` attributes become `handler:<event>`-marked listener
+/// registrations. Plain data attributes stay record fields only.
+#[test]
+fn worker_members_carry_js_dispatch_markers() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest.join("tests/fixtures/worker.webidl");
+    let backend = WebIdlBackend::new(None);
+    let module = backend.parse_header(&path).expect("parse fixture");
+
+    assert!(module.diagnostics.is_empty(), "{:?}", module.diagnostics);
+
+    let find = |name: &str| {
+        module
+            .functions
+            .iter()
+            .find(|f| f.name == name)
+            .unwrap_or_else(|| panic!("missing function {name}"))
+    };
+
+    // Constructor: returns the constructed interface, no receiver.
+    let ctor = find("worker_constructor");
+    assert_eq!(ctor.c_decl, "Worker.constructor");
+    assert_eq!(ctor.return_port, "Handle");
+    assert_eq!(ctor.ret_descriptor, "js_object");
+    assert_eq!(ctor.port_args.len(), 2);
+    assert!(
+        !ctor.arg_descriptors.iter().any(|d| d.starts_with("recv:")),
+        "constructor must not carry a receiver: {:?}",
+        ctor.arg_descriptors
+    );
+
+    // Instance op: leading `self` receiver with the `recv:` marker.
+    let terminate = find("worker_terminate");
+    assert_eq!(terminate.c_decl, "Worker.terminate");
+    assert_eq!(terminate.port_args[0].name, "self");
+    assert_eq!(terminate.port_args[0].port, "Handle");
+    assert_eq!(terminate.arg_descriptors, &["recv:js_object"]);
+
+    // Overloaded op: the later overload wins the shared name; the
+    // receiver is still peeled first.
+    let post = find("worker_post_message");
+    assert_eq!(post.port_args.len(), 3);
+    assert_eq!(post.arg_descriptors[0], "recv:js_object");
+    assert_eq!(post.arg_descriptors.len(), 3);
+
+    // Static op: no receiver — the emitter dispatches `call` on the
+    // `Worker` global.
+    let register = find("worker_register");
+    assert!(
+        !register.arg_descriptors.iter().any(|d| d.starts_with("recv:")),
+        "static op must not carry a receiver: {:?}",
+        register.arg_descriptors
+    );
+    assert_eq!(register.arg_descriptors, &["js_string"]);
+
+    // `on<event>` attributes (own + mixin-grafted): `handler:<event>`
+    // marks the arrow arg for `js.on`.
+    for (fname, event) in [
+        ("worker_onmessage", "message"),
+        ("worker_onmessageerror", "messageerror"),
+        ("worker_onerror", "error"),
+        ("message_event_target_onmessage", "message"),
+        ("abstract_worker_onerror", "error"),
+    ] {
+        let f = find(fname);
+        assert_eq!(f.port_args.len(), 2, "{fname}");
+        assert_eq!(f.port_args[0].name, "self");
+        assert_eq!(f.port_args[1].name, "handler");
+        assert_eq!(f.arg_descriptors[0], "recv:js_object");
+        assert_eq!(
+            f.arg_descriptors[1],
+            format!("handler:{event}"),
+            "{fname}"
+        );
+        assert_eq!(f.return_port, "Handle");
+        assert_eq!(f.ret_descriptor, "js_object");
+    }
+
+    // The data attribute stays a record field and gets no accessor.
+    let worker = module
+        .records
+        .iter()
+        .find(|r| r.name == "Worker")
+        .expect("Worker record");
+    assert!(worker.fields.iter().any(|f| f.name == "label"));
+    assert!(worker.fields.iter().any(|f| f.name == "onmessage"));
+    assert!(
+        !module.functions.iter().any(|f| f.name == "worker_label"),
+        "data attributes must not emit accessor functions"
+    );
+}
+
 /// Enum constants are gathered through a `HashMap` merge; without a sort the
 /// emitted order varies per run (fresh `RandomState`). Parsing twice in one
 /// process must yield identical output.

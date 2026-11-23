@@ -267,6 +267,9 @@ pub enum Member {
         name: String,
         return_ty: Type,
         args: Vec<Argument>,
+        /// `static` operations dispatch on the interface object itself
+        /// (`URL.createObjectURL`) — no instance receiver.
+        is_static: bool,
         doc: Option<String>,
     },
     Constructor {
@@ -968,7 +971,7 @@ impl<'a> Parser<'a> {
         }
 
         // `static` qualifies operations only — parse the rest as usual.
-        self.consume_if_ident("static");
+        let is_static = self.consume_if_ident("static");
 
         // `getter`/`setter`/`deleter`/`legacycaller` qualify special
         // operations — parse them like ordinary ones.
@@ -1034,6 +1037,7 @@ impl<'a> Parser<'a> {
                 name,
                 return_ty: ty,
                 args,
+                is_static,
                 doc: None,
             });
         } else if ctx == Container::Dictionary {
