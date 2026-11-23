@@ -103,7 +103,7 @@ The `hnl-file` emitter remaps descriptors to `js_*` spellings for the
 `construct` (`Interface.constructor`), `on` (`handler:<event>`
 listener registration — its result convention is `null` + recorded
 `error()` = failure, since `on` does not clear `error()` on
-success). See `engine-codegen-file/docs/index.md` for the emitted
+success). See `tool-codegen-file/docs/index.md` for the emitted
 shapes.
 
 ## Config — `WebIdlConfig`
