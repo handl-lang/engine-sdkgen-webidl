@@ -2,6 +2,7 @@
 name = "handl-plugin-codegen-backend-webidl"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
 description = "WebIDL backend for the Handl codegen pipeline (ADR-0113, PL-004)."
 license = "MIT"
 repository = "https://github.com/handl-lang/tool-codegen-webidl"
